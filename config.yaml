@@ -1,0 +1,33 @@
+# Global configuration for the Adult income proof-of-concept.
+seed: 42
+
+data:
+  openml_name: adult
+  openml_version: 2
+  # Fallback used when OpenML is unreachable (same data, UCI layout, no header).
+  local_csv: data/raw/adult.csv
+  target: class
+  positive_label: ">50K"
+  sensitive_attribute: sex
+  test_size: 0.20
+  val_size: 0.20          # fraction of the full dataset
+
+features:
+  drop: [fnlwgt, education]   # fnlwgt = census sampling weight; education duplicates education-num
+  rare_country_min_count: 50
+
+tuning:
+  cv_folds: 5
+  metric: average_precision   # PR-AUC: threshold-free and suited to a 24% positive rate
+  n_trials:
+    logreg: 30
+    random_forest: 30
+    lightgbm: 40
+  timeout_per_model_s: 1500
+
+paths:
+  artifacts: artifacts
+  models: artifacts/models
+  plots: artifacts/plots
+  runs: artifacts/runs
+  tables: artifacts/tables
