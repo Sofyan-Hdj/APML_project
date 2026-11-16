@@ -7,6 +7,7 @@ artifacts/models/*.joblib
 artifacts/models/*.json.tmp
 report/*.aux
 report/*.log
+!report/report.pdf
 report/*.out
 report/*.toc
 .ipynb_checkpoints/

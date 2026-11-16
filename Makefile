@@ -13,4 +13,4 @@ explain:    ; $(PY) scripts/explain.py
 fairness:   ; $(PY) scripts/fairness.py
 test:       ; $(PY) -m pytest -q tests
 serve:      ; uvicorn adult_poc.api:app --app-dir src --port 8000
-report:     ; cd report && pdflatex -interaction=nonstopmode report.tex && pdflatex -interaction=nonstopmode report.tex
+report:     ; $(PY) scripts/make_report_tables.py && cd report && pdflatex -interaction=nonstopmode report.tex && pdflatex -interaction=nonstopmode report.tex
