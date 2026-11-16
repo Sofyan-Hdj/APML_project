@@ -1,0 +1,127 @@
+[
+  {
+    "case": "true_positive_confident",
+    "proba": 1.0,
+    "true": 1,
+    "profile": {
+      "age": "41",
+      "workclass": "Private",
+      "education-num": "16",
+      "marital-status": "Married-civ-spouse",
+      "occupation": "Exec-managerial",
+      "relationship": "Husband",
+      "race": "White",
+      "sex": "Male",
+      "capital-gain": "15024",
+      "capital-loss": "0",
+      "hours-per-week": "50",
+      "native-country": "Canada"
+    },
+    "top_contributions": {
+      "capital_net_log": 5.952,
+      "education-num": 1.166,
+      "hours-per-week": 0.494,
+      "occupation_Exec-managerial": 0.396
+    }
+  },
+  {
+    "case": "true_negative_confident",
+    "proba": 0.0,
+    "true": 0,
+    "profile": {
+      "age": "17",
+      "workclass": "Private",
+      "education-num": "6",
+      "marital-status": "Never-married",
+      "occupation": "Sales",
+      "relationship": "Own-child",
+      "race": "White",
+      "sex": "Female",
+      "capital-gain": "594",
+      "capital-loss": "0",
+      "hours-per-week": "12",
+      "native-country": "United-States"
+    },
+    "top_contributions": {
+      "capital_net_log": -3.169,
+      "age": -2.041,
+      "age_sq": -1.362,
+      "hours-per-week": -1.281
+    }
+  },
+  {
+    "case": "false_positive",
+    "proba": 0.99,
+    "true": 0,
+    "profile": {
+      "age": "51",
+      "workclass": "Private",
+      "education-num": "10",
+      "marital-status": "Married-civ-spouse",
+      "occupation": "Exec-managerial",
+      "relationship": "Husband",
+      "race": "White",
+      "sex": "Male",
+      "capital-gain": "0",
+      "capital-loss": "1902",
+      "hours-per-week": "40",
+      "native-country": "United-States"
+    },
+    "top_contributions": {
+      "capital_net_log": 2.412,
+      "is_married": 0.682,
+      "marital-status_Married-civ-spouse": 0.617,
+      "age": 0.525
+    }
+  },
+  {
+    "case": "false_negative",
+    "proba": 0.044,
+    "true": 1,
+    "profile": {
+      "age": "56",
+      "workclass": "Private",
+      "education-num": "5",
+      "marital-status": "Divorced",
+      "occupation": "Craft-repair",
+      "relationship": "Not-in-family",
+      "race": "White",
+      "sex": "Female",
+      "capital-gain": "0",
+      "capital-loss": "0",
+      "hours-per-week": "40",
+      "native-country": "United-States"
+    },
+    "top_contributions": {
+      "education-num": -1.005,
+      "age": 0.557,
+      "is_married": -0.421,
+      "marital-status_Married-civ-spouse": -0.341
+    }
+  },
+  {
+    "case": "borderline",
+    "proba": 0.669,
+    "true": 0,
+    "profile": {
+      "age": "34",
+      "workclass": "Private",
+      "education-num": "9",
+      "marital-status": "Married-civ-spouse",
+      "occupation": "Sales",
+      "relationship": "Husband",
+      "race": "White",
+      "sex": "Male",
+      "capital-gain": "0",
+      "capital-loss": "0",
+      "hours-per-week": "50",
+      "native-country": "United-States"
+    },
+    "top_contributions": {
+      "is_married": 0.552,
+      "hours-per-week": 0.474,
+      "marital-status_Married-civ-spouse": 0.413,
+      "education-num": -0.38
+    }
+  }
+]

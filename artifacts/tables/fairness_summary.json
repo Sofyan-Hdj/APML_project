@@ -1,0 +1,50 @@
+{
+  "baseline": {
+    "f1": 0.7351061636775923,
+    "balanced_acc": 0.8323224202943489,
+    "accuracy": 0.8683131789301086,
+    "dp_difference": 0.2473314426065703,
+    "dp_ratio": 0.27689280052479087,
+    "tpr_difference": 0.1571887128191347,
+    "fpr_difference": 0.12232643490439812,
+    "eo_difference": 0.1571887128191347,
+    "precision_difference": 0.06779942279942286
+  },
+  "ground_truth_base_rate": {
+    "Female": 0.11515333734215273,
+    "Male": 0.30363805970149255
+  },
+  "unawareness": {
+    "f1": 0.7320954907161804,
+    "balanced_acc": 0.832049548177761,
+    "accuracy": 0.8654437384709982,
+    "dp_difference": 0.2473507948830711,
+    "dp_ratio": 0.2875233709413733,
+    "tpr_difference": 0.14720607915251227,
+    "fpr_difference": 0.12427709421632131,
+    "eo_difference": 0.14720607915251227,
+    "precision_difference": 0.0511859349624203
+  },
+  "threshold_optimizer_eo": {
+    "f1": 0.6855759252853684,
+    "balanced_acc": 0.8256037446982869,
+    "accuracy": 0.8136913301906128,
+    "dp_difference": 0.1562551419092152,
+    "dp_ratio": 0.6155190999387635,
+    "tpr_difference": 0.0217353231755657,
+    "fpr_difference": 0.03744919944677835,
+    "eo_difference": 0.03744919944677835,
+    "precision_difference": 0.2543607645223942
+  },
+  "race_baseline": {
+    "f1": 0.7351061636775923,
+    "balanced_acc": 0.8323224202943489,
+    "accuracy": 0.8683131789301086,
+    "dp_difference": 0.20284030010718118,
+    "dp_ratio": 0.2911985018726591,
+    "tpr_difference": 0.17313292625645849,
+    "fpr_difference": 0.13231981981981983,
+    "eo_difference": 0.17313292625645849,
+    "precision_difference": 0.2504012841091492
+  }
+}

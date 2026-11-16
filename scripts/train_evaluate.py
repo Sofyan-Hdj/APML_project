@@ -20,7 +20,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 from sklearn.dummy import DummyClassifier  # noqa: E402
-from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay  # noqa: E402
+from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve  # noqa: E402
 
 from adult_poc.config import load_config  # noqa: E402
 from adult_poc.data import load_raw, split  # noqa: E402
@@ -75,9 +75,16 @@ if __name__ == "__main__":
 
     fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
     for name in MODEL_NAMES:
-        kw = dict(name=PRETTY[name], color=MODEL_COLORS[name])
-        PrecisionRecallDisplay.from_predictions(y_va, preds[f"{name}_val"], ax=axes[0], **kw)
-        RocCurveDisplay.from_predictions(y_va, preds[f"{name}_val"], ax=axes[1], **kw)
+        p = preds[f"{name}_val"]
+        prec, rec, _ = precision_recall_curve(y_va, p)
+        fpr, tpr, _ = roc_curve(y_va, p)
+        axes[0].plot(rec, prec, color=MODEL_COLORS[name],
+                     label=f"{PRETTY[name]} (AP={average_precision_score(y_va, p):.3f})")
+        axes[1].plot(fpr, tpr, color=MODEL_COLORS[name], label=f"{PRETTY[name]} (AUC={roc_auc_score(y_va, p):.3f})")
+    axes[0].set_xlabel("Recall")
+    axes[0].set_ylabel("Precision")
+    axes[1].set_xlabel("False positive rate")
+    axes[1].set_ylabel("True positive rate")
     axes[0].axhline(y_va.mean(), ls="--", color="grey", lw=0.8, label="prevalence")
     axes[0].set_title("Precision-Recall (validation)")
     axes[1].plot([0, 1], [0, 1], ls="--", color="grey", lw=0.8)

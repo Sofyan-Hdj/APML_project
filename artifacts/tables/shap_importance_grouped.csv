@@ -1,0 +1,17 @@
+,mean_abs_shap
+capital_net_log,0.65405
+occupation,0.64314
+marital-status,0.5528
+is_married,0.51884
+age,0.5125
+education-num,0.4463
+age_sq,0.37137
+relationship,0.37124
+hours-per-week,0.36646
+sex,0.22452
+workclass,0.12959
+overtime,0.10787
+race,0.09411
+native-country,0.06507
+has_capital_gain,0.05063
+has_capital_loss,0.01539
