@@ -1,0 +1,87 @@
+"""Step 4/5 - refit the three tuned pipelines, compare them, pick the final model.
+
+* Each pipeline is refit on the full training split with its best Optuna params.
+* The decision threshold of each model is the F1-optimal one on *validation*.
+* The final model is chosen on validation PR-AUC only.
+* The test split is scored once, for the comparison table in the report.
+"""
+import json
+import logging
+import sys
+import warnings
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+import joblib  # noqa: E402
+import matplotlib  # noqa: E402
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import pandas as pd  # noqa: E402
+from sklearn.dummy import DummyClassifier  # noqa: E402
+from sklearn.metrics import PrecisionRecallDisplay, RocCurveDisplay  # noqa: E402
+
+from adult_poc.config import load_config  # noqa: E402
+from adult_poc.data import load_raw, split  # noqa: E402
+from adult_poc.features import make_pipeline  # noqa: E402
+from adult_poc.metrics import best_f1_threshold, evaluate  # noqa: E402
+from adult_poc.models import MODEL_NAMES, PRETTY, build_model, uses_scaling  # noqa: E402
+from adult_poc.plotting import MODEL_COLORS, savefig, setup_style  # noqa: E402
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+    warnings.simplefilter("ignore")
+    setup_style()
+    cfg = load_config()
+    P = cfg["paths"]
+    X, y = load_raw(cfg)
+    X_tr, X_va, X_te, y_tr, y_va, y_te = split(X, y, cfg)
+
+    rows, preds, pipes = [], {"y_val": y_va.values, "y_test": y_te.values}, {}
+    dummy = DummyClassifier(strategy="prior").fit(X_tr, y_tr)
+    for split_name, Xs, ys in [("val", X_va, y_va), ("test", X_te, y_te)]:
+        rows.append({"model": "dummy_prior", "split": split_name, **evaluate(ys, dummy.predict_proba(Xs)[:, 1], 0.5)})
+
+    for name in MODEL_NAMES:
+        best = json.load(open(P["runs"] / f"best_params_{name}.json"))
+        pipe = make_pipeline(build_model(name, best["params"], cfg["seed"]), scale=uses_scaling(name))
+        pipe.fit(X_tr, y_tr)
+        p_va, p_te = pipe.predict_proba(X_va)[:, 1], pipe.predict_proba(X_te)[:, 1]
+        thr = best_f1_threshold(y_va, p_va)
+        rows.append({"model": name, "split": "cv_train", "pr_auc": best["cv_pr_auc"],
+                     "roc_auc": best["cv"]["roc_auc_mean"], "f1": best["cv"]["f1_mean"],
+                     "balanced_acc": best["cv"]["balanced_acc_mean"], "brier": best["cv"]["brier_mean"],
+                     "threshold": 0.5})
+        rows.append({"model": name, "split": "val", **evaluate(y_va, p_va, thr)})
+        rows.append({"model": name, "split": "test", **evaluate(y_te, p_te, thr)})
+        preds[f"{name}_val"], preds[f"{name}_test"] = p_va, p_te
+        joblib.dump(pipe, P["models"] / f"{name}.joblib")
+        pipes[name] = (pipe, thr)
+
+    res = pd.DataFrame(rows)
+    res.round(4).to_csv(P["tables"] / "model_comparison.csv", index=False)
+    val = res[(res.split == "val") & res.model.isin(MODEL_NAMES)].set_index("model")
+    final = val["pr_auc"].idxmax()
+    pipe, thr = pipes[final]
+    joblib.dump(pipe, P["models"] / "final_pipeline.joblib")
+    meta = {"model": final, "threshold": thr, "selected_on": "validation PR-AUC",
+            "val_pr_auc": float(val.loc[final, "pr_auc"])}
+    json.dump(meta, open(P["models"] / "final_meta.json", "w"), indent=2)
+    pd.DataFrame({k: v for k, v in preds.items() if "val" in k}).to_csv(P["tables"] / "preds_val.csv", index=False)
+    pd.DataFrame({k: v for k, v in preds.items() if "test" in k}).to_csv(P["tables"] / "preds_test.csv", index=False)
+    print(res.round(4).to_string(index=False))
+    print("FINAL:", meta)
+
+    fig, axes = plt.subplots(1, 2, figsize=(9, 3.6))
+    for name in MODEL_NAMES:
+        kw = dict(name=PRETTY[name], color=MODEL_COLORS[name])
+        PrecisionRecallDisplay.from_predictions(y_va, preds[f"{name}_val"], ax=axes[0], **kw)
+        RocCurveDisplay.from_predictions(y_va, preds[f"{name}_val"], ax=axes[1], **kw)
+    axes[0].axhline(y_va.mean(), ls="--", color="grey", lw=0.8, label="prevalence")
+    axes[0].set_title("Precision-Recall (validation)")
+    axes[1].plot([0, 1], [0, 1], ls="--", color="grey", lw=0.8)
+    axes[1].set_title("ROC (validation)")
+    for ax in axes:
+        ax.legend(fontsize=7)
+    savefig(fig, P["plots"] / "model_pr_roc_val.png")
