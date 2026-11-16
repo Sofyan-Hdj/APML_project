@@ -7,6 +7,7 @@ to the identical UCI file stored in ``data/raw/adult.csv``.
 from __future__ import annotations
 
 import logging
+import os
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
@@ -24,7 +25,10 @@ NUMERIC_RAW = ["age", "fnlwgt", "education-num", "capital-gain", "capital-loss",
 def _load_openml(cfg: dict) -> tuple[pd.DataFrame, pd.Series]:
     from sklearn.datasets import fetch_openml
 
-    ds = fetch_openml(name=cfg["data"]["openml_name"], version=cfg["data"]["openml_version"], as_frame=True)
+    if os.environ.get("ADULT_OFFLINE") == "1":
+        raise ConnectionError("ADULT_OFFLINE=1")
+    ds = fetch_openml(name=cfg["data"]["openml_name"], version=cfg["data"]["openml_version"], as_frame=True,
+                      n_retries=1, delay=0.5)
     return ds.data, ds.target
 
 
