@@ -4,9 +4,10 @@ __pycache__/
 .pytest_cache/
 data/raw/*.csv
 artifacts/models/*.joblib
+artifacts/models/*.json.tmp
 report/*.aux
 report/*.log
 report/*.out
 report/*.toc
 .ipynb_checkpoints/
-artifacts/
+

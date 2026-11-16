@@ -1,0 +1,28 @@
+{
+  "n_rows": 48790,
+  "n_features": 14,
+  "positive_rate": 0.23941381430621028,
+  "missing_by_column": {
+    "workclass": 2795,
+    "occupation": 2805,
+    "native-country": 856
+  },
+  "rows_with_missing": 3615,
+  "positive_rate_by_sex": {
+    "Female": 0.1094,
+    "Male": 0.3039
+  },
+  "share_by_sex": {
+    "Male": 0.6685,
+    "Female": 0.3315
+  },
+  "positive_rate_by_race": {
+    "Amer-Indian-Eskimo": 0.117,
+    "Asian-Pac-Islander": 0.2696,
+    "Black": 0.1209,
+    "Other": 0.1232,
+    "White": 0.2541
+  },
+  "capital_gain_zero_share": 0.9172986267677803,
+  "capital_loss_zero_share": 0.9532281205164993
+}
