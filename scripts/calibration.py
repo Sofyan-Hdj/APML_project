@@ -23,7 +23,9 @@ from sklearn.frozen import FrozenEstimator  # noqa: E402
 
 from adult_poc.config import load_config  # noqa: E402
 from adult_poc.data import load_raw, split  # noqa: E402
-from adult_poc.metrics import best_f1_threshold, evaluate  # noqa: E402
+from adult_poc.metrics import (  # noqa: E402
+    best_f1_threshold, evaluate, expected_calibration_error, max_calibration_error,
+)
 from adult_poc.plotting import savefig, setup_style  # noqa: E402
 
 if __name__ == "__main__":
@@ -42,6 +44,19 @@ if __name__ == "__main__":
     p_cal = cal.predict_proba(X_te)[:, 1]
     thr_cal = best_f1_threshold(y_va, cal.predict_proba(X_va)[:, 1])
     joblib.dump(cal, P["models"] / "final_pipeline_calibrated.joblib")
+
+    # ── Diagnostics only (logged, nothing saved): isotonic vs Platt, overconfidence ──
+    cal_sig = CalibratedClassifierCV(FrozenEstimator(pipe), method="sigmoid").fit(X_va, y_va)
+    p_sig = cal_sig.predict_proba(X_te)[:, 1]
+    yt = np.asarray(y_te)
+    for name, p in (("raw", p_raw), ("isotonic", p_cal), ("sigmoid", p_sig)):
+        logging.info(
+            f"[diag] {name:9s} Brier={np.mean((yt - p) ** 2):.4f} "
+            f"ECE={expected_calibration_error(yt, p):.4f} "
+            f"ECE_quantile={expected_calibration_error(yt, p, strategy='quantile'):.4f} "
+            f"MCE={max_calibration_error(yt, p):.4f} mean_pred={p.mean():.4f}"
+        )
+    logging.info(f"[diag] observed rate={yt.mean():.4f}, raw overconfidence gap={p_raw.mean() - yt.mean():+.4f}")
 
     out = {"model": meta["model"],
            "raw": evaluate(y_te, p_raw, meta["threshold"]),
