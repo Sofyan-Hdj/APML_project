@@ -9,6 +9,7 @@ import json
 import logging
 import sys
 import warnings
+from importlib.metadata import version
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -21,11 +22,12 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 from sklearn.dummy import DummyClassifier  # noqa: E402
 from sklearn.metrics import average_precision_score, precision_recall_curve, roc_auc_score, roc_curve  # noqa: E402
+from sklearn.model_selection import StratifiedKFold, cross_validate  # noqa: E402
 
 from adult_poc.config import load_config  # noqa: E402
-from adult_poc.data import load_raw, split  # noqa: E402
+from adult_poc.data import data_fingerprint, load_raw, split  # noqa: E402
 from adult_poc.features import make_pipeline  # noqa: E402
-from adult_poc.metrics import best_f1_threshold, evaluate  # noqa: E402
+from adult_poc.metrics import CV_SCORING, best_f1_threshold, evaluate  # noqa: E402
 from adult_poc.models import MODEL_NAMES, PRETTY, build_model, uses_scaling  # noqa: E402
 from adult_poc.plotting import MODEL_COLORS, savefig, setup_style  # noqa: E402
 
@@ -39,20 +41,36 @@ if __name__ == "__main__":
     X_tr, X_va, X_te, y_tr, y_va, y_te = split(X, y, cfg)
 
     rows, preds, pipes = [], {"y_val": y_va.values, "y_test": y_te.values}, {}
+    # Recheck the originally selected configurations without rerunning or replacing
+    # the historical 100-trial search. This also records the current environment.
+    cv = StratifiedKFold(n_splits=cfg["tuning"]["cv_folds"], shuffle=True, random_state=cfg["seed"])
+    verification = {"dataset_sha256": data_fingerprint(X, y), "seed": cfg["seed"],
+                    "versions": {name: version(name) for name in
+                                 ["numpy", "pandas", "scikit-learn", "lightgbm", "optuna"]},
+                    "split_rows": {"train": len(X_tr), "validation": len(X_va), "test": len(X_te)},
+                    "split_sha256": {name: data_fingerprint(xs, ys) for name, xs, ys in
+                                     [("train", X_tr, y_tr), ("validation", X_va, y_va), ("test", X_te, y_te)]},
+                    "models": {}}
     dummy = DummyClassifier(strategy="prior").fit(X_tr, y_tr)
     for split_name, Xs, ys in [("val", X_va, y_va), ("test", X_te, y_te)]:
         rows.append({"model": "dummy_prior", "split": split_name, **evaluate(ys, dummy.predict_proba(Xs)[:, 1], 0.5)})
 
     for name in MODEL_NAMES:
         best = json.load(open(P["runs"] / f"best_params_{name}.json"))
-        pipe = make_pipeline(build_model(name, best["params"], cfg["seed"]), scale=uses_scaling(name))
+        fe_kwargs = {"drop": tuple(cfg["features"]["drop"]),
+                     "rare_min_count": cfg["features"]["rare_country_min_count"]}
+        pipe = make_pipeline(build_model(name, best["params"], cfg["seed"]), fe_kwargs,
+                             scale=uses_scaling(name))
+        scores = cross_validate(pipe, X_tr, y_tr, cv=cv, scoring=CV_SCORING, n_jobs=1,
+                                error_score="raise")
+        current_cv = {key: float((-scores[f"test_{key}"] if key == "brier" else scores[f"test_{key}"]).mean())
+                      for key in CV_SCORING}
+        verification["models"][name] = {"historical_run_id": best["run_id"], "trial": best["best_trial"],
+                                        "effective_model_params": pipe[-1].get_params(), "cv": current_cv}
         pipe.fit(X_tr, y_tr)
         p_va, p_te = pipe.predict_proba(X_va)[:, 1], pipe.predict_proba(X_te)[:, 1]
         thr = best_f1_threshold(y_va, p_va)
-        rows.append({"model": name, "split": "cv_train", "pr_auc": best["cv_pr_auc"],
-                     "roc_auc": best["cv"]["roc_auc_mean"], "f1": best["cv"]["f1_mean"],
-                     "balanced_acc": best["cv"]["balanced_acc_mean"], "brier": best["cv"]["brier_mean"],
-                     "threshold": 0.5})
+        rows.append({"model": name, "split": "cv_train", **current_cv, "threshold": 0.5})
         rows.append({"model": name, "split": "val", **evaluate(y_va, p_va, thr)})
         rows.append({"model": name, "split": "test", **evaluate(y_te, p_te, thr)})
         preds[f"{name}_val"], preds[f"{name}_test"] = p_va, p_te
@@ -68,6 +86,8 @@ if __name__ == "__main__":
     meta = {"model": final, "threshold": thr, "selected_on": "validation PR-AUC",
             "val_pr_auc": float(val.loc[final, "pr_auc"])}
     json.dump(meta, open(P["models"] / "final_meta.json", "w"), indent=2)
+    with open(P["runs"] / "refit_verification.json", "w") as f:
+        json.dump(verification, f, indent=2)
     pd.DataFrame({k: v for k, v in preds.items() if "val" in k}).to_csv(P["tables"] / "preds_val.csv", index=False)
     pd.DataFrame({k: v for k, v in preds.items() if "test" in k}).to_csv(P["tables"] / "preds_test.csv", index=False)
     print(res.round(4).to_string(index=False))

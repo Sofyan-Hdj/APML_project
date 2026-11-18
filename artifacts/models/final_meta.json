@@ -1,6 +1,6 @@
 {
   "model": "lightgbm",
-  "threshold": 0.6695106513499413,
+  "threshold": 0.6393629271292371,
   "selected_on": "validation PR-AUC",
-  "val_pr_auc": 0.8320109958849581
+  "val_pr_auc": 0.8322187391477477
 }

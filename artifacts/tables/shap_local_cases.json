@@ -18,10 +18,10 @@
       "native-country": "Canada"
     },
     "top_contributions": {
-      "capital_net_log": 5.952,
-      "education-num": 1.166,
-      "hours-per-week": 0.494,
-      "occupation_Exec-managerial": 0.396
+      "capital_net_log": 5.823,
+      "education-num": 1.213,
+      "hours-per-week": 0.487,
+      "occupation_Exec-managerial": 0.389
     }
   },
   {
@@ -43,15 +43,15 @@
       "native-country": "United-States"
     },
     "top_contributions": {
-      "capital_net_log": -3.169,
-      "age": -2.041,
-      "age_sq": -1.362,
-      "hours-per-week": -1.281
+      "capital_net_log": -2.843,
+      "age": -1.994,
+      "hours-per-week": -1.349,
+      "age_sq": -1.342
     }
   },
   {
     "case": "false_positive",
-    "proba": 0.99,
+    "proba": 0.991,
     "true": 0,
     "profile": {
       "age": "51",
@@ -68,15 +68,15 @@
       "native-country": "United-States"
     },
     "top_contributions": {
-      "capital_net_log": 2.412,
-      "is_married": 0.682,
-      "marital-status_Married-civ-spouse": 0.617,
-      "age": 0.525
+      "capital_net_log": 2.462,
+      "is_married": 0.693,
+      "marital-status_Married-civ-spouse": 0.637,
+      "age": 0.522
     }
   },
   {
     "case": "false_negative",
-    "proba": 0.044,
+    "proba": 0.04,
     "true": 1,
     "profile": {
       "age": "56",
@@ -93,35 +93,35 @@
       "native-country": "United-States"
     },
     "top_contributions": {
-      "education-num": -1.005,
-      "age": 0.557,
-      "is_married": -0.421,
-      "marital-status_Married-civ-spouse": -0.341
+      "education-num": -1.048,
+      "age": 0.556,
+      "is_married": -0.428,
+      "age_sq": 0.357
     }
   },
   {
     "case": "borderline",
-    "proba": 0.669,
+    "proba": 0.639,
     "true": 0,
     "profile": {
-      "age": "34",
+      "age": "30",
       "workclass": "Private",
-      "education-num": "9",
-      "marital-status": "Married-civ-spouse",
-      "occupation": "Sales",
-      "relationship": "Husband",
+      "education-num": "15",
+      "marital-status": "Never-married",
+      "occupation": "Prof-specialty",
+      "relationship": "Not-in-family",
       "race": "White",
-      "sex": "Male",
+      "sex": "Female",
       "capital-gain": "0",
       "capital-loss": "0",
-      "hours-per-week": "50",
+      "hours-per-week": "45",
       "native-country": "United-States"
     },
     "top_contributions": {
-      "is_married": 0.552,
-      "hours-per-week": 0.474,
-      "marital-status_Married-civ-spouse": 0.413,
-      "education-num": -0.38
+      "education-num": 1.704,
+      "hours-per-week": 0.468,
+      "is_married": -0.434,
+      "occupation_Prof-specialty": 0.424
     }
   }
 ]

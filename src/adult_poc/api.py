@@ -6,12 +6,15 @@ Docs: http://localhost:8000/docs
 from __future__ import annotations
 
 import json
-from typing import Literal, Optional
+from functools import lru_cache
+from typing import Annotated, Literal, Optional
 
 import joblib
 import numpy as np
 import pandas as pd
-from fastapi import FastAPI
+from fastapi import Body, FastAPI, HTTPException
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from .config import ROOT
@@ -21,7 +24,8 @@ MODELS = ROOT / "artifacts" / "models"
 
 class Person(BaseModel):
     """One census record, using the original column names (hyphens allowed via aliases)."""
-    model_config = ConfigDict(populate_by_name=True, json_schema_extra={"example": {
+    model_config = ConfigDict(populate_by_name=True, extra="forbid", allow_inf_nan=False,
+                              json_schema_extra={"example": {
         "age": 45, "workclass": "Private", "education": "Bachelors", "education-num": 13,
         "marital-status": "Married-civ-spouse", "occupation": "Exec-managerial",
         "relationship": "Husband", "race": "White", "sex": "Male", "capital-gain": 0,
@@ -51,36 +55,50 @@ class Prediction(BaseModel):
     model: str
 
 
+@lru_cache(maxsize=1)
 def _load():
-    pipe = joblib.load(MODELS / "final_pipeline.joblib")
-    meta = json.load(open(MODELS / "final_meta.json"))
+    try:
+        pipe = joblib.load(MODELS / "final_pipeline.joblib")
+        with open(MODELS / "final_meta.json") as f:
+            meta = json.load(f)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=503, detail="Model unavailable: run make train first") from exc
     cal_path = MODELS / "final_pipeline_calibrated.joblib"
     cal = joblib.load(cal_path) if cal_path.exists() else None
     return pipe, meta, cal
 
 
 app = FastAPI(title="Adult income PoC", version="1.0")
-PIPE, META, CAL = _load()
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, exc):
+    # Do not echo invalid values: an infinite input is itself not valid JSON.
+    errors = [{k: error[k] for k in ("type", "loc", "msg")} for error in exc.errors()]
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 def _frame(people: list[Person]) -> pd.DataFrame:
     df = pd.DataFrame([p.model_dump(by_alias=True) for p in people])
-    df["fnlwgt"] = df["fnlwgt"].fillna(0.0)  # dropped by the pipeline anyway
+    df["fnlwgt"] = pd.to_numeric(df["fnlwgt"]).fillna(0.0)  # dropped by the pipeline anyway
     return df.replace({None: np.nan})
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "model": META["model"], "threshold": META["threshold"]}
+    _, meta, _ = _load()
+    return {"status": "ok", "model": meta["model"], "threshold": meta["threshold"],
+            "decision_policy": "baseline_global_threshold"}
 
 
 @app.post("/predict", response_model=list[Prediction])
-def predict(people: list[Person]) -> list[Prediction]:
+def predict(people: Annotated[list[Person], Body(min_length=1)]) -> list[Prediction]:
     df = _frame(people)
-    p = PIPE.predict_proba(df)[:, 1]
-    pc = CAL.predict_proba(df)[:, 1] if CAL is not None else [None] * len(p)
-    thr = META["threshold"]
+    pipe, meta, cal = _load()
+    p = pipe.predict_proba(df)[:, 1]
+    pc = cal.predict_proba(df)[:, 1] if cal is not None else [None] * len(p)
+    thr = meta["threshold"]
     return [Prediction(probability_gt_50k=round(float(a), 4),
                        calibrated_probability_gt_50k=None if b is None else round(float(b), 4),
-                       prediction=">50K" if a >= thr else "<=50K", threshold=round(thr, 4), model=META["model"])
+                       prediction=">50K" if a >= thr else "<=50K", threshold=round(thr, 4), model=meta["model"])
             for a, b in zip(p, pc)]

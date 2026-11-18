@@ -6,6 +6,7 @@ to the identical UCI file stored in ``data/raw/adult.csv``.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 
@@ -20,6 +21,8 @@ COLUMNS = [
     "hours-per-week", "native-country", "class",
 ]
 NUMERIC_RAW = ["age", "fnlwgt", "education-num", "capital-gain", "capital-loss", "hours-per-week"]
+UCI_TRAIN_ROWS = 32561
+UCI_TEST_ROWS = 16281
 
 
 def _load_openml(cfg: dict) -> tuple[pd.DataFrame, pd.Series]:
@@ -29,13 +32,21 @@ def _load_openml(cfg: dict) -> tuple[pd.DataFrame, pd.Series]:
         raise ConnectionError("ADULT_OFFLINE=1")
     ds = fetch_openml(name=cfg["data"]["openml_name"], version=cfg["data"]["openml_version"], as_frame=True,
                       n_retries=1, delay=0.5)
-    return ds.data, ds.target
+    # Adult v2 on OpenML is adult.test followed by adult.data. Our original
+    # local experiment used adult.data followed by adult.test. Keep that order
+    # on both routes so seed 42 selects the same people, not just the same sizes.
+    if len(ds.data) != UCI_TRAIN_ROWS + UCI_TEST_ROWS:
+        raise ValueError("Unexpected Adult v2 row count")
+    order = list(range(UCI_TEST_ROWS, len(ds.data))) + list(range(UCI_TEST_ROWS))
+    return ds.data.iloc[order].reset_index(drop=True), ds.target.iloc[order].reset_index(drop=True)
 
 
 def _load_local(cfg: dict) -> tuple[pd.DataFrame, pd.Series]:
     df = pd.read_csv(cfg["data"]["local_csv"], header=None, names=COLUMNS,
                      na_values="?", skipinitialspace=True)
-    y = df.pop("class").str.rstrip(".")
+    if len(df) != UCI_TRAIN_ROWS + UCI_TEST_ROWS:
+        raise ValueError("Expected 48,842 rows: adult.data followed by adult.test")
+    y = df.pop("class").str.strip().str.rstrip(".")
     for c in df.columns:
         if c not in NUMERIC_RAW:
             df[c] = df[c].astype("category")
@@ -50,12 +61,28 @@ def load_raw(cfg: dict) -> tuple[pd.DataFrame, pd.Series]:
     except Exception as exc:  # network errors, proxy, etc.
         log.warning("OpenML unavailable (%s); using local copy %s", type(exc).__name__, cfg["data"]["local_csv"])
         X, y = _load_local(cfg)
-    y = (y.astype(str).str.strip() == cfg["data"]["positive_label"]).astype(int).rename("target")
+    labels = y.astype(str).str.strip().str.rstrip(".")
+    if not labels.isin(["<=50K", ">50K"]).all():
+        raise ValueError("Unexpected Adult target labels")
+    y = (labels == cfg["data"]["positive_label"]).astype(int).rename("target")
     # Exact duplicate rows carry no new information and could leak across splits.
     dup = X.assign(_y=y.values).duplicated()
     log.info("Dropping %d exact duplicate rows", int(dup.sum()))
     X, y = X.loc[~dup].reset_index(drop=True), y.loc[~dup].reset_index(drop=True)
+    expected = cfg["data"].get("sha256")
+    if expected and data_fingerprint(X, y) != expected:
+        raise ValueError("Adult data/order differs from the recorded experiment; check the local CSV order")
     return X, y
+
+
+def data_fingerprint(X: pd.DataFrame, y: pd.Series) -> str:
+    """Hash row values in order; comparable across OpenML and local dtypes."""
+    rows = X[COLUMNS[:-1]].copy()
+    for c in NUMERIC_RAW:
+        rows[c] = pd.to_numeric(rows[c]).astype("float64")
+    rows = rows.astype(object).where(rows.notna(), "<Missing>")
+    rows["target"] = y.to_numpy()
+    return hashlib.sha256(rows.to_csv(index=False).encode("utf-8")).hexdigest()
 
 
 def split(X: pd.DataFrame, y: pd.Series, cfg: dict):
@@ -63,7 +90,7 @@ def split(X: pd.DataFrame, y: pd.Series, cfg: dict):
 
     * train      -> Optuna tuning with k-fold CV, final fit
     * validation -> model selection, decision threshold, calibration, fairness post-processing
-    * test       -> touched once, for the final numbers only
+    * test       -> held out from fitting and selection, used for final evaluation
     """
     seed = cfg["seed"]
     test_size = cfg["data"]["test_size"]

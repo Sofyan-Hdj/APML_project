@@ -62,7 +62,8 @@ if __name__ == "__main__":
            "raw": evaluate(y_te, p_raw, meta["threshold"]),
            "isotonic": evaluate(y_te, p_cal, thr_cal),
            "mean_predicted_raw": float(p_raw.mean()), "mean_predicted_isotonic": float(p_cal.mean()),
-           "observed_rate": float(y_te.mean())}
+           "observed_rate": float(y_te.mean()),
+           "decision_changes": int(np.sum((p_raw >= meta["threshold"]) != (p_cal >= thr_cal)))}
     frac_raw, mean_raw = calibration_curve(y_te, p_raw, n_bins=10, strategy="quantile")
     frac_cal, mean_cal = calibration_curve(y_te, p_cal, n_bins=10, strategy="quantile")
     out["reliability_raw"] = {"mean_pred": mean_raw.round(3).tolist(), "frac_pos": frac_raw.round(3).tolist()}

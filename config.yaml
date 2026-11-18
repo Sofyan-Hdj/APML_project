@@ -4,8 +4,10 @@ seed: 42
 data:
   openml_name: adult
   openml_version: 2
-  # Fallback used when OpenML is unreachable (same data, UCI layout, no header).
+  # Fallback: adult.data then adult.test, with the latter's comment line removed.
   local_csv: data/raw/adult.csv
+  # Fingerprint after normalizing types and dropping exact duplicates, in order.
+  sha256: 9729c358e818bc4f2e2f6ed6ae43229b2d9b2044efb79eef1a69a7a91c8309b6
   target: class
   positive_label: ">50K"
   sensitive_attribute: sex

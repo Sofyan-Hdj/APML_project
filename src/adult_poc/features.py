@@ -78,9 +78,9 @@ BINARY = ["has_capital_gain", "has_capital_loss", "is_married", "overtime"]
 def make_preprocessor(scale: bool = True) -> ColumnTransformer:
     """Imputation + encoding.
 
-    Missing ``workclass`` / ``occupation`` are *not* missing at random (they are
-    mostly people out of the labour force), so they get their own explicit
-    ``Missing`` category instead of the mode.
+    Missing ``workclass`` / ``occupation`` get an explicit ``Missing`` category
+    rather than the mode, preserving their informative absence without assuming
+    a particular statistical missingness mechanism.
     """
     num_steps = [("impute", SimpleImputer(strategy="median"))]
     if scale:
