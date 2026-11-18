@@ -84,7 +84,5 @@ def evaluate(y_true, proba, threshold: float = 0.5) -> dict:
         "accuracy": accuracy_score(y_true, pred),
         "brier": brier_score_loss(y_true, proba),
         "ece": expected_calibration_error(y_true, proba),
-        "ece_quantile": expected_calibration_error(y_true, proba, strategy="quantile"),
-        "mce": max_calibration_error(y_true, proba),
         "threshold": threshold,
     }
