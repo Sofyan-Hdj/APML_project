@@ -139,7 +139,7 @@ quality much (PR-AUC within $\pm$0.006): resampling or reweighting does not crea
 default 0.5 threshold, the uncorrected models are too conservative (LightGBM recall 0.665) and every remedy
 moves the operating point towards recall; (3) once the threshold is tuned, the uncorrected and the weighted
 models reach the same F1 (0.728 for LightGBM); (4) SMOTE and under-sampling bring nothing over weighting and
-add a dependency and, for under-sampling, discard 60\% of the negatives.
+add a dependency and, for under-sampling, discard about 69\% of the negatives.
 
 We kept \textbf{cost-sensitive learning (\code{class\_weight="balanced"}) combined with a validation-tuned
 decision threshold} for all three models. It is the simplest remedy that works the same way across the
