@@ -167,8 +167,8 @@ and usually leads on tabular data.
 \emph{training split only}. The objective of a trial is the mean PR-AUC over a 5-fold
 \code{StratifiedKFold}; the whole Pipeline is refit inside every fold (\code{cross\_validate}), so
 preprocessing never leaks. Validation and test data play no role in hyper-parameter choice, so the CV
-score is an unbiased estimate for the tuned configuration (up to the mild optimism of picking the max over
-trials, which we check on validation). Budgets: 30 trials for logistic regression ($C\in[10^{-3},10]$
+score is not contaminated by validation or test data, but it is still slightly optimistic, since we keep the
+best of 30 to 40 trials per model. The validation scores are the independent check (Table~\ref{tab:models}). Budgets: 30 trials for logistic regression ($C\in[10^{-3},10]$
 log-scale, $\ell_1$-ratio $\in[0,1]$), 30 for Random Forest (number of trees, depth, leaf size,
 \code{max\_features}, bootstrap fraction) and 40 for LightGBM (trees, learning rate, leaves, child samples,
 row/column subsampling, $\ell_2$). Fig.~\ref{fig:optuna} shows the optimisation histories.
@@ -178,8 +178,8 @@ row/column subsampling, $\ell_2$). Fig.~\ref{fig:optuna} shows the optimisation 
 \includegraphics[width=0.32\textwidth]{optuna_history_logreg.png}\hfill
 \includegraphics[width=0.32\textwidth]{optuna_history_random_forest.png}\hfill
 \includegraphics[width=0.32\textwidth]{optuna_history_lightgbm.png}
-\caption{Optuna histories (5-fold CV PR-AUC per trial and running best). Logistic regression converges in
-a few trials (2 parameters); LightGBM keeps improving slowly until the end of its budget.}
+\caption{Optuna histories (5-fold CV PR-AUC per trial and running best). The logistic regression search is still improving near its last
+trials (best at trial 28 of 30), so it has not converged; the random forest reaches its best at trial 7 and does not improve after it; LightGBM keeps improving until trial 38 of 40.}
 \label{fig:optuna}
 \end{figure}
 
@@ -191,7 +191,7 @@ Best configurations (all trials are in the run log, Appendix~\ref{app:runlog}):
   \item Random Forest (trial 7): 350 trees, depth 13, min.\ leaf 2, 51\% of features per split, 66\% bootstrap.
   CV PR-AUC $0.804\pm0.004$.
   \item LightGBM (trial 38): 750 trees, learning rate 0.035, 16 leaves, min.\ child samples 18, 45\% of
-  columns per tree, $\lambda_2=0.18$: many small, shallow trees with strong column subsampling.
+  columns per tree, $\lambda_2=0.18$: many small trees with strong column subsampling.
   CV PR-AUC $0.827\pm0.005$.
 \end{itemize}
 
@@ -222,17 +222,19 @@ clearly than ROC.}
 \end{figure}
 
 \paragraph{What each step bought us.} Going from logistic regression to Random Forest adds
-$+0.034$ CV PR-AUC and $+0.015$ validation F1: trees capture interactions the linear model cannot (e.g.\ the
+$+0.037$ validation PR-AUC and $+0.015$ validation F1: trees capture interactions the linear model cannot (e.g.\ the
 return on education is much larger for married people) and thresholds on capital amounts. LightGBM adds
-another $+0.024$ PR-AUC and $+0.019$ F1 and, at the chosen threshold, gets the best \emph{precision} (0.71
-vs 0.64 for the forest) for similar recall: boosting fits the residual structure the forest averages
+another $+0.024$ validation PR-AUC and $+0.019$ validation F1 and, at the chosen threshold, gets the best \emph{precision} (0.71
+vs 0.64 for the forest) at a lower recall (0.75 vs 0.80): boosting fits the residual structure the forest averages
 away. ROC-AUC gains are smaller (0.910\,$\rightarrow$\,0.918\,$\rightarrow$\,0.929), which shows why we use PR-AUC
 for selection. The costs go the other way: the linear model is readable from its coefficients, while the
 ensembles need SHAP (Section~\ref{sec:shap}); tuning time was 16\,min for the logistic regression
 (\code{saga} converges slowly at high $C$), 12\,min for the forest and 5\,min for LightGBM on a 2-core
-machine. CV, validation and test scores agree within about two CV standard deviations
-(Table~\ref{tab:models}), so the tuning did not overfit the folds. The test scores are slightly higher than
-validation, which is sampling noise for 9.7k-row splits.
+machine. Validation scores agree with the CV means within about one CV standard deviation
+(Table~\ref{tab:models}), so the tuning did not overfit the folds. The test scores are higher than validation
+for all three models, by 0.005 to 0.009 PR-AUC, and for the random forest and LightGBM they sit 2.6 to 2.8 CV
+standard deviations above the CV mean. Because the shift is shared by all three models, it is more likely a
+property of the test split than of any one model's tuning.
 
 \textbf{Final model: LightGBM}, threshold 0.670. On the untouched test set: PR-AUC 0.840, ROC-AUC 0.933,
 F1 0.735, precision 0.709, recall 0.763, balanced accuracy 0.832 (accuracy 0.868, against 0.761 for the
