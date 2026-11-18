@@ -36,17 +36,62 @@ def test_ece_is_zero_for_perfect_calibration():
     assert expected_calibration_error(y, p) == pytest.approx(0.0, abs=1e-9)
 
 
-@pytest.mark.skipif(not (Path(__file__).resolve().parents[1] / "artifacts/models/final_pipeline.joblib").exists(),
-                    reason="train the model first (make train)")
-def test_api_predict():
+@pytest.fixture
+def api_client(monkeypatch):
+    """Exercise a real fitted pipeline without downloading data or skipping tests."""
     from fastapi.testclient import TestClient
+    from sklearn.calibration import CalibratedClassifierCV
+    from sklearn.frozen import FrozenEstimator
+    from sklearn.linear_model import LogisticRegression
 
-    from adult_poc.api import app
+    from adult_poc import api
+    from adult_poc.features import make_pipeline
 
-    client = TestClient(app)
+    rows = pd.DataFrame([ROW, {**ROW, "age": 22, "capital-gain": 0, "hours-per-week": 20},
+                         {**ROW, "age": 55}, {**ROW, "age": 18, "capital-gain": 0, "hours-per-week": 10}])
+    pipe = make_pipeline(LogisticRegression(random_state=42)).fit(rows, [1, 0, 1, 0])
+    cal = CalibratedClassifierCV(FrozenEstimator(pipe), method="isotonic", cv=2).fit(rows, [1, 0, 1, 0])
+    monkeypatch.setattr(api, "_load", lambda: (pipe, {"model": "test_model", "threshold": 0.6}, cal))
+    return TestClient(api.app), pipe, cal
+
+
+def test_api_predict(api_client):
+    client, pipe, cal = api_client
     assert client.get("/health").json()["status"] == "ok"
     body = {k: v for k, v in ROW.items() if k != "fnlwgt"}
     r = client.post("/predict", json=[body, {**body, "workclass": None, "occupation": None}])
     assert r.status_code == 200
     out = r.json()
-    assert len(out) == 2 and 0 <= out[0]["probability_gt_50k"] <= 1
+    assert len(out) == 2
+    p = pipe.predict_proba(pd.DataFrame([ROW]))[0, 1]
+    pc = cal.predict_proba(pd.DataFrame([ROW]))[0, 1]
+    assert out[0]["probability_gt_50k"] == pytest.approx(round(p, 4))
+    assert out[0]["calibrated_probability_gt_50k"] == pytest.approx(round(pc, 4))
+    assert out[0]["prediction"] == (">50K" if p >= 0.6 else "<=50K")
+
+
+@pytest.mark.parametrize("body", [[], [{**ROW, "capital_gian": 5000}],
+                                  [{**ROW, "capital-gain": "Infinity"}],
+                                  [{**ROW, "capital-loss": "NaN"}],
+                                  [{**ROW, "age": -1}], [{**ROW, "sex": "Unknown"}]])
+def test_api_rejects_invalid_inputs(api_client, body):
+    client, _, _ = api_client
+    assert client.post("/predict", json=body).status_code == 422
+
+
+def test_api_reports_missing_model(monkeypatch, tmp_path):
+    from fastapi.testclient import TestClient
+    from adult_poc import api
+
+    monkeypatch.setattr(api, "MODELS", tmp_path)
+    api._load.cache_clear()
+    assert TestClient(api.app).get("/health").status_code == 503
+    api._load.cache_clear()
+
+
+def test_api_rejects_overflowing_json_number(api_client):
+    import json
+
+    client, _, _ = api_client
+    body = json.dumps([ROW]).replace('5000', '1e999')
+    assert client.post("/predict", content=body, headers={"Content-Type": "application/json"}).status_code == 422

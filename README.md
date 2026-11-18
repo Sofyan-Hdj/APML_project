@@ -9,23 +9,33 @@ binary target `income > 50K` (24% positives), sensitive attribute `sex`.
 End-to-end pipeline: EDA → feature engineering → class-imbalance handling → three models
 (Logistic Regression, Random Forest, LightGBM) tuned with Optuna under 5-fold CV → SHAP
 explanations → calibration diagnostics → fairness audit and mitigation → FastAPI endpoint.
-All methodological choices and results are discussed in `report/report.pdf`.
+Methodological choices and corrected results are in `report/report.tex`; its
+preview compiles in the LaTeX editor. The tracked `report/report.pdf` is the
+previous export and must be refreshed from the editor before the PR/submission.
 
 ## Setup
+
+Use Python 3.12 and the tested versions below. On macOS, LightGBM also requires
+the OpenMP runtime (`brew install libomp`).
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-The data is downloaded from OpenML on first run. On a machine without access to
-openml.org, place the UCI file (`adult-all.csv`, 48,842 rows, no header) at
-`data/raw/adult.csv` and set `ADULT_OFFLINE=1`; the loader falls back to it automatically.
+The data is downloaded from OpenML on first run. For the offline route, run
+`make download-data` once while online to prepare `data/raw/adult.csv` from the
+official UCI archive, then set `ADULT_OFFLINE=1`. This file must contain
+`adult.data` followed by `adult.test`, without its comment line or any header.
+The loader reorders OpenML Adult v2 to that same order and checks a dataset hash
+after deduplication. A different input order is rejected rather than silently
+changing the held-out people.
 
 ## Run the whole project
 
 ```bash
-make all          # or run the scripts below in order
+make reproduce    # rebuild from the three saved configurations, including a fresh CV check
+make all          # also rerun the full Optuna search (30 / 30 / 40 trials)
 ```
 
 | Step | Command | Main outputs |
@@ -40,7 +50,13 @@ make all          # or run the scripts below in order
 | Tests | `pytest -q tests` | |
 | Serve | `make serve` | API on http://localhost:8000/docs |
 
-Tuning takes about 30–40 minutes on a 2-core laptop (the number of trials is set in `config.yaml`).
+The original tuning took about 30–40 minutes on a 2-core machine. `make reproduce`
+keeps the original 100-trial log, rechecks the chosen configurations with five-fold
+CV, and rebuilds all downstream results. `artifacts/runs/refit_verification.json`
+records effective model parameters, versions, and dataset/split hashes. For a
+full new search, `make all` appends a run to the log. `make report` exports the
+tables and compiles the LaTeX source (requires `pdflatex`). Narrative text should
+be checked when results change.
 
 ## Prediction endpoint
 
@@ -52,8 +68,16 @@ curl -X POST localhost:8000/predict -H "Content-Type: application/json" -d '[{
   "capital-gain": 0, "capital-loss": 0, "hours-per-week": 50, "native-country": "United-States"}]'
 ```
 
-It returns the raw score, the isotonic-calibrated probability and the decision at the
-validation-tuned threshold.
+It returns the raw score, the isotonic-calibrated probability (or `null` before
+calibration), and the decision at the raw-score validation threshold. This endpoint
+serves the **baseline global-threshold policy**; the fairness post-processor is
+evaluated offline. Calibration does not make a decision rule fair.
+
+Run `make train` before serving, and `make calibrate` for calibrated probabilities.
+Without a trained model, `/health` and valid prediction requests return HTTP 503.
+Empty batches, unknown fields, nonfinite numbers, and invalid types/ranges return
+HTTP 422. API regression tests fit a tiny local pipeline and run without model
+artifacts or network access.
 
 ## Repository layout
 
@@ -78,15 +102,18 @@ report/                  LaTeX source and PDF of the report
 Stratified 60 / 20 / 20 (seed 42), after removing 52 exact duplicate rows:
 * **train** (29,274) — Optuna tuning with 5-fold CV, then final refit;
 * **validation** (9,758) — model selection, decision threshold, isotonic calibration, fairness post-processing;
-* **test** (9,758) — used once, for the final reported numbers.
+* **test** (9,758) — held out from fitting, threshold tuning, calibration fitting,
+  and mitigation fitting. The original descriptive EDA used the whole dataset;
+  test data was therefore not completely unseen during exploration.
 
-## Results (test set, used once)
+## Results (held-out test set)
 
 | Model | PR-AUC | F1 | Precision | Recall |
 |---|---|---|---|---|
 | Logistic regression | 0.777 | 0.692 | 0.660 | 0.728 |
-| Random forest | 0.815 | 0.714 | 0.643 | 0.803 |
-| **LightGBM (final)** | **0.840** | **0.735** | 0.709 | 0.763 |
+| Random forest | 0.815 | 0.715 | 0.650 | 0.793 |
+| **LightGBM (final)** | **0.840** | **0.730** | 0.680 | 0.787 |
 
-Calibration (isotonic): ECE 0.106 → 0.006. Fairness (sex, ThresholdOptimizer): equalized-odds gap 0.157 → 0.037.
+Calibration (isotonic): ECE 0.105 → 0.007. Fairness (sex, ThresholdOptimizer): equalized-odds gap 0.163 → 0.037.
+These are corrected refits; the original 100-trial search remains unchanged.
 Full analysis in `report/report.pdf`.

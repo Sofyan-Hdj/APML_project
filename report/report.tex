@@ -1,4 +1,4 @@
-\documentclass[10.5pt,a4paper]{article}
+\documentclass[10pt,a4paper]{article}
 \usepackage[margin=2.1cm]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
@@ -32,7 +32,8 @@
 \fbox{\parbox{0.92\textwidth}{\small
 \textbf{Dataset used:} Option 1 --- Adult / Census Income, \code{fetch\_openml(name="adult", version=2)}.
 Binary target: \code{class = ">50K"}. Sensitive attribute audited: \code{sex}.\\
-\textbf{Code:} \url{https://github.com/Sofyan-Hdj/APML_project} \quad (\code{make all} reproduces every number and figure.)}}
+\textbf{Code:} \url{https://github.com/Sofyan-Hdj/APML_project}\\
+\code{make reproduce} rebuilds the tables and figures from the saved configurations.}}
 \end{center}
 
 \section{Problem framing and exploratory analysis}
@@ -47,14 +48,14 @@ operating-point metrics. Plain accuracy is reported only to show how misleading 
 ``$\le$50K'' already reaches 76.1\%.
 
 \paragraph{Data.} 48{,}842 rows, 14 features (6 numeric, 8 categorical). We drop 52 exact duplicate
-rows (features and label identical) so that the same individual cannot appear in both training and test,
+rows (features and label identical) to prevent exact copies from crossing training and test,
 leaving 48{,}790 rows. Key observations (Fig.~\ref{fig:eda}):
 \begin{itemize}
   \item \textbf{Imbalance:} 23.9\% positives. Imbalanced but not extreme (ratio 1:3.2).
   \item \textbf{Missing values:} only in \code{workclass} (2{,}795), \code{occupation} (2{,}805) and
   \code{native-country} (856), 7.4\% of rows. Missing \code{workclass} and \code{occupation} occur
-  together and concern mostly people outside the labour force: they are \emph{not missing at random} and
-  their positive rate is far below average, so the missingness itself is informative.
+  together and have a lower positive rate, so missingness itself is informative. This observation alone
+  does not establish the statistical missingness mechanism.
   \item \textbf{Skewed capital variables:} \code{capital-gain} is 0 for 91.7\% of people and
   \code{capital-loss} for 95.3\%, with a long tail up to 99{,}999 (a top-coded value).
   \item \textbf{Redundancy:} \code{education} is a 1-to-1 label of the ordinal \code{education-num};
@@ -76,7 +77,8 @@ leaving 48{,}790 rows. Key observations (Fig.~\ref{fig:eda}):
 \textbf{train} (29{,}274 rows) is the only data seen by hyper-parameter tuning, through 5-fold stratified
 cross-validation; \textbf{validation} (9{,}758) is used for every post-training decision (model
 selection, decision threshold, probability calibration, fairness post-processing); \textbf{test}
-(9{,}758) is scored once at the end. All three splits keep the 23.9\% prevalence. All preprocessing is
+(9{,}758) is held out from fitting and selection. The original descriptive EDA included all rows, so the
+test data was not entirely unseen during exploration. All three splits keep the 23.9\% prevalence. All preprocessing is
 inside the Pipeline (Section~\ref{sec:pipeline}), so imputation statistics, rare-category lists and
 encoders are re-fitted on each CV training fold and never see held-out rows. We considered a time-based
 split, but the 1994 census extract has no time dimension, so a random stratified split is appropriate.
@@ -88,7 +90,7 @@ All engineering is done by a custom scikit-learn transformer, \code{FeatureEngin
   \item \textbf{\code{capital\_net\_log}} $=\operatorname{sign}(g-\ell)\log(1+|g-\ell|)$ with $g$, $\ell$ the
   capital gain and loss. The raw columns are 90\%+ zeros with extreme tails; the signed log of the net
   amount compresses the tail (helping the linear model) while keeping the direction. It turns out to be the
-  most important feature (Section~\ref{sec:shap}).
+  one of the strongest features (Section~\ref{sec:shap}).
   \item \textbf{\code{has\_capital\_gain}, \code{has\_capital\_loss}}: owning investments at all is a wealth
   signal, independently of the amount declared that year.
   \item \textbf{\code{is\_married}}: collapses the 7 \code{marital-status} levels into the split that
@@ -102,7 +104,7 @@ All engineering is done by a custom scikit-learn transformer, \code{FeatureEngin
   \item \textbf{Dropped:} \code{fnlwgt} and \code{education} (see Section 1); raw capital columns are
   replaced by the engineered ones.
   \item \textbf{Missing values:} categorical NaNs become an explicit \textit{Missing} level (justified by the
-  not-at-random pattern above); numeric columns (none missing here, but possible at serving time) use the
+  missingness pattern above); numeric columns (none missing here, but possible at serving time) use the
   training median. Numeric features are standardised for the logistic regression only.
 \end{itemize}
 After encoding, the models see 72 columns. A unit test (\code{tests/test\_pipeline.py}) checks the
@@ -120,6 +122,8 @@ with default hyper-parameters, (i) no correction, (ii) cost-sensitive learning w
 (iii) SMOTE and (iv) random under-sampling (both inserted in an \code{imblearn} Pipeline \emph{after}
 preprocessing, so synthetic rows are built from training rows only), each with the default 0.5 threshold,
 plus (i) and (ii) with an F1-optimal threshold chosen on validation (``+thr'').
+Ordinary SMOTE after one-hot encoding can create fractional category mixtures, and its neighbour distances
+depend on scaling. This is an exploratory comparison, not evidence that all resampling methods are inferior.
 
 \begin{table}[h]
 \centering\small
@@ -166,9 +170,9 @@ and usually leads on tabular data.
 \paragraph{Optuna with honest CV.} Each model is tuned with Optuna's TPE sampler (seeded) on the
 \emph{training split only}. The objective of a trial is the mean PR-AUC over a 5-fold
 \code{StratifiedKFold}; the whole Pipeline is refit inside every fold (\code{cross\_validate}), so
-preprocessing never leaks. Validation and test data play no role in hyper-parameter choice, so the CV
-score is an unbiased estimate for the tuned configuration (up to the mild optimism of picking the max over
-trials, which we check on validation). Budgets: 30 trials for logistic regression ($C\in[10^{-3},10]$
+preprocessing is fitted inside each fold. Validation and test data play no role in hyper-parameter choice.
+Selecting the best of many trials still makes the winning CV score optimistic; validation and test provide
+separate checks. Budgets: 30 trials for logistic regression ($C\in[10^{-3},10]$
 log-scale, $\ell_1$-ratio $\in[0,1]$), 30 for Random Forest (number of trees, depth, leaf size,
 \code{max\_features}, bootstrap fraction) and 40 for LightGBM (trees, learning rate, leaves, child samples,
 row/column subsampling, $\ell_2$). Fig.~\ref{fig:optuna} shows the optimisation histories.
@@ -198,6 +202,12 @@ Best configurations (all trials are in the run log, Appendix~\ref{app:runlog}):
 \paragraph{Comparison.} Each tuned pipeline is refit on the full training split; its decision threshold is
 the F1-optimal one on validation; the final model is chosen on validation PR-AUC. Test numbers are given for
 completeness and were not used for any choice.
+The original 100-trial search is preserved in Appendix~\ref{app:runlog}. For this corrected version, we
+rechecked the three selected configurations with five-fold CV in the pinned environment before refitting.
+LightGBM now keeps \code{subsample\_freq=1} in both CV and refitting; the initial refit had accidentally
+disabled subsampling. The initial Random Forest predictions were not exactly reproducible, so Table~\ref{tab:models}
+uses the fresh refit rather than presenting the historical predictions as reproduced. Dataset and split hashes,
+versions and effective parameters are saved in \code{artifacts/runs/refit\_verification.json}.
 
 \begin{table}[h]
 \centering\small
@@ -222,20 +232,20 @@ clearly than ROC.}
 \end{figure}
 
 \paragraph{What each step bought us.} Going from logistic regression to Random Forest adds
-$+0.034$ CV PR-AUC and $+0.015$ validation F1: trees capture interactions the linear model cannot (e.g.\ the
+$+0.035$ CV PR-AUC and $+0.016$ validation F1: trees capture interactions the linear model cannot (e.g.\ the
 return on education is much larger for married people) and thresholds on capital amounts. LightGBM adds
-another $+0.024$ PR-AUC and $+0.019$ F1 and, at the chosen threshold, gets the best \emph{precision} (0.71
-vs 0.64 for the forest) for similar recall: boosting fits the residual structure the forest averages
+another $+0.023$ PR-AUC and $+0.018$ F1 and, at the chosen threshold, gets the best \emph{precision} (0.687
+vs 0.652 for the forest) for similar recall: boosting fits the residual structure the forest averages
 away. ROC-AUC gains are smaller (0.910\,$\rightarrow$\,0.918\,$\rightarrow$\,0.929), which shows why we use PR-AUC
 for selection. The costs go the other way: the linear model is readable from its coefficients, while the
 ensembles need SHAP (Section~\ref{sec:shap}); tuning time was 16\,min for the logistic regression
 (\code{saga} converges slowly at high $C$), 12\,min for the forest and 5\,min for LightGBM on a 2-core
-machine. CV, validation and test scores agree within about two CV standard deviations
-(Table~\ref{tab:models}), so the tuning did not overfit the folds. The test scores are slightly higher than
-validation, which is sampling noise for 9.7k-row splits.
+machine. These are timings from the original search. Fold standard deviations are descriptive variability,
+not confidence intervals for differences between models. Similar held-out scores are reassuring but do not
+prove an absence of overfitting.
 
-\textbf{Final model: LightGBM}, threshold 0.670. On the untouched test set: PR-AUC 0.840, ROC-AUC 0.933,
-F1 0.735, precision 0.709, recall 0.763, balanced accuracy 0.832 (accuracy 0.868, against 0.761 for the
+\textbf{Final model: LightGBM}, threshold 0.639. On the held-out test set: PR-AUC 0.840, ROC-AUC 0.933,
+F1 0.730, precision 0.680, recall 0.787, balanced accuracy 0.835 (accuracy 0.861, against 0.761 for the
 dummy). The threshold above 0.5 is what we expect: class weighting inflates the scores, and the validation
 search moves the threshold back up.
 
@@ -255,10 +265,10 @@ most important encoded columns (colour = feature value).}
 \label{fig:shapglobal}
 \end{figure}
 
-\paragraph{Global view.} The top drivers (Fig.~\ref{fig:shapglobal}) are \code{capital\_net\_log} (0.65),
-\code{occupation} (0.64), marital status (\code{marital-status} 0.55 plus \code{is\_married} 0.52; the
-model splits this signal between the two encodings), \code{age} (0.51, plus 0.37 for \code{age\_sq}),
-\code{education-num} (0.45), \code{relationship} (0.37) and \code{hours-per-week} (0.37). \code{sex}
+\paragraph{Global view.} The top drivers (Fig.~\ref{fig:shapglobal}) are \code{occupation} (0.65),
+\code{capital\_net\_log} (0.64), marital status (\code{marital-status} 0.57 plus \code{is\_married} 0.53; the
+model splits this signal between the two encodings), \code{age} (0.52, plus 0.38 for \code{age\_sq}),
+\code{education-num} (0.46), \code{relationship} (0.39) and \code{hours-per-week} (0.38). \code{sex}
 comes next (0.22), ahead of \code{workclass}, \code{race} (0.09) and \code{native-country} (0.07).
 
 \paragraph{Do they make business sense?} Mostly yes. Investment income, a managerial or professional
@@ -268,8 +278,9 @@ are the textbook determinants of earnings. Marriage is less obvious: it is partl
 \emph{household} context. Two points need care. (i) Large \emph{negative} \code{capital\_net\_log} values
 (capital losses of about \$1{,}900--2{,}400) push predictions \emph{up}: declaring a capital loss requires
 owning investments and, in US tax rules, is mostly worth doing for higher earners. This is a real pattern
-but a fragile one: it depends on the tax rules of the time. (ii) \code{sex} has a direct effect
-(\textit{Female} lowers the log-odds) on top of its proxies (\textit{Husband}/\textit{Wife}). The model
+but a fragile one: it depends on the tax rules of the time. (ii) The fitted model uses \code{sex}
+as well as related inputs such as \textit{Husband}/\textit{Wife}. SHAP describes model contributions,
+not causal effects, and correlated inputs can share attribution. The model
 reproduces the historical pay gap in the data. It is ``accurate'', but it motivates the audit in
 Section~\ref{sec:fair}.
 
@@ -277,17 +288,19 @@ Section~\ref{sec:fair}.
 (Fig.~\ref{fig:shaplocal}; the five waterfall plots are in \code{artifacts/plots/}):
 \begin{itemize}
   \item \textbf{Confident true positive} ($p\approx1.00$): 41-year-old married executive with a doctorate and
-  a \$15{,}024 capital gain; the capital gain alone adds $+5.95$ log-odds.
-  \item \textbf{Confident true negative} ($p\approx0.00$): 17-year-old working 12\,h/week; age ($-2.0$),
-  $age^2$ ($-1.4$) and short hours ($-1.3$) dominate.
+  a \$15{,}024 capital gain; the capital feature alone adds $+5.82$ log-odds.
+  \item \textbf{Confident true negative} ($p\approx0.00$): 17-year-old working 12\,h/week; the small
+  declared capital gain has a negative contribution ($-2.84$), along with age ($-1.99$),
+  $age^2$ ($-1.34$) and short hours ($-1.35$).
   \item \textbf{False positive} ($p=0.99$, true $\le$50K): 51-year-old married male executive with a
-  \$1{,}902 capital loss. The capital-loss pattern ($+2.4$), marriage and seniority all point up; the profile
+  \$1{,}902 capital loss. The capital-loss pattern ($+2.46$), marriage and seniority all point up; the profile
   is typical of high earners, so the error is understandable and shows the limit of the capital-loss signal.
   \item \textbf{False negative} ($p=0.04$, true $>$50K): 56-year-old divorced woman in craft/repair with low
-  formal education (\code{education-num}=5). Every typical signal points down; such ``atypical'' high earners
-  are the ones a model based on correlations misses.
-  \item \textbf{Borderline} ($p=0.67\approx$ threshold): 34-year-old married salesman, 50\,h/week, high-school
-  level: marriage and long hours ($+0.55$, $+0.47$) are balanced by education ($-0.38$).
+  formal education (\code{education-num}=5). Education ($-1.05$) and not being married ($-0.43$)
+  outweigh positive age contributions; a model of typical patterns misses this high earner.
+  \item \textbf{Borderline} ($p=0.639\approx$ threshold): 30-year-old never-married woman in a professional
+  occupation, 45\,h/week, professional-school education: education and long hours ($+1.70$, $+0.47$)
+  are partly offset by not being married ($-0.43$) and other contributions.
 \end{itemize}
 
 \begin{figure}[h]
@@ -309,19 +322,20 @@ recalibration fitted on the validation set; right: score distributions.}
 \end{figure}
 
 \paragraph{Diagnosis.} On the test set the raw LightGBM scores have a Brier score of \textbf{0.108} and an
-ECE (10 equal-width bins) of \textbf{0.106}. The reliability curve (Fig.~\ref{fig:calib}) lies entirely
-\emph{below} the diagonal: when the model says 0.48 the observed rate is 0.25; for 0.68 it is 0.37; for 0.85 it
-is 0.63. The average predicted probability is 0.345 for an observed prevalence of 0.239. The model is
+ECE (10 equal-width bins) of \textbf{0.105}. The reliability curve (Fig.~\ref{fig:calib}) lies mostly
+\emph{below} the diagonal: when the model says 0.48 the observed rate is 0.25; for 0.69 it is 0.38; for 0.85 it
+is 0.63. The average predicted probability is 0.344 for an observed prevalence of 0.239. The model is
 therefore \textbf{over-confident in the positive class}: it systematically over-estimates the probability
 of earning more than \$50K. This is the expected side effect of \code{class\_weight="balanced"}: weighting
 positives $\approx3.2\times$ relative to negatives shifts the learned log-odds by roughly $\log 3.2\approx1.2$.
-Ranking is unaffected, which is why PR-AUC and the tuned-threshold decisions are fine.
+Weighting can also change ranking when a model is retrained; the ablation found only small PR-AUC changes.
 
 \paragraph{Correction.} We fit an isotonic mapping on the \emph{validation} scores, keeping the trained
 pipeline frozen (\code{CalibratedClassifierCV(FrozenEstimator(pipe), method="isotonic")}), and evaluate on
-test: Brier drops to \textbf{0.085} (below the 0.088 of the unweighted model in Table~\ref{tab:imb}), ECE to
-\textbf{0.006}, and the mean predicted probability becomes 0.240. Decisions are unchanged (same F1 0.735 at
-the re-tuned threshold 0.41, the monotone image of 0.67). PR-AUC falls slightly (0.840\,$\rightarrow$\,0.828)
+test: Brier drops to \textbf{0.086}, ECE to
+\textbf{0.007}, and the mean predicted probability becomes 0.240. The script explicitly checks decisions:
+none change on this test set (same F1 0.730 at the re-tuned calibrated threshold 0.368).
+This is an observed result, not a guarantee from monotonicity alone. PR-AUC falls (0.840\,$\rightarrow$\,0.826)
 because isotonic regression is a step function that creates ties among scores. Platt scaling would avoid
 this but assumes a sigmoid-shaped distortion.
 
@@ -343,7 +357,8 @@ targeting scenario, a positive prediction gives access to an offer, so we report
 consider \textbf{equalized odds} the most relevant: it conditions on the true outcome, so it does not
 require equal selection rates when base rates truly differ (11.5\% vs 30.4\% in the test set), but it does
 require that errors are not distributed unequally between women and men. Demographic parity is reported
-because the base-rate gap itself reflects historical discrimination, and a regulator may look at it.
+because base-rate differences may reflect historical disadvantage as well as population composition;
+this audit does not identify their causal explanation.
 
 \begin{table}[h]
 \centering\small
@@ -373,17 +388,18 @@ Variant & Group & Selection rate & TPR & FPR & Precision & F1 \\
 \label{tab:fairgroup}
 \end{table}
 
-\paragraph{Audit of the final model.} At its single global threshold, LightGBM selects 9.5\% of women and
-34.2\% of men (DP difference 0.247, ratio 0.28, far below the ``four-fifths'' rule of 0.8). Part of this
-reflects the different base rates, but the error rates are unequal too: the TPR is 0.632 for women against
-0.789 for men (\textbf{equal-opportunity gap 0.157}): a woman who really earns more than \$50K is missed
-37\% of the time, against 21\% for a man. The FPR gap is 0.122 (0.025 vs 0.147). Precision is similar (0.77 vs
-0.70). The race audit (secondary, not mitigated) shows comparable gaps (EO difference 0.173 between groups,
+\paragraph{Audit of the final model.} At its single global threshold, LightGBM selects 10.1\% of women and
+36.8\% of men (DP difference 0.267, ratio 0.275). Part of this
+reflects the different base rates, but the error rates are unequal too: the TPR is 0.650 for women against
+0.814 for men (\textbf{equal-opportunity gap 0.163}): a woman who really earns more than \$50K is missed
+35\% of the time, against 19\% for a man. The FPR gap is 0.144 (0.030 vs 0.173). Precision is 0.74 vs
+0.67. The race audit (secondary, not mitigated) shows comparable gaps (EO difference 0.197 between groups,
 smaller groups being noisy).
 
-\paragraph{Unawareness is not enough.} Retraining without \code{sex} barely changes anything (EO 0.147, DP
-0.247): \code{relationship}, \code{marital-status}, occupation and hours carry the same information. This is
-the classic proxy problem and the reason we keep \code{sex} available for auditing.
+\paragraph{Unawareness is not enough.} Retraining without \code{sex} reduces the gaps modestly (EO 0.138, DP
+0.235) but does not remove them. Related information remains in inputs such as \code{relationship} and
+\code{marital-status}. This illustrates why removing the explicit attribute alone does not establish fairness,
+and why we keep \code{sex} available for auditing.
 
 \paragraph{Mitigation: post-processing with \code{ThresholdOptimizer}.} We apply fairlearn's
 \code{ThresholdOptimizer} with an \textbf{equalized-odds} constraint (objective: balanced accuracy) on top of
@@ -391,14 +407,14 @@ the frozen final pipeline. It learns group-specific (randomised) thresholds on t
 the test set stays untouched for the comparison. Results (Tables~\ref{tab:fair}--\ref{tab:fairgroup},
 Fig.~\ref{fig:fair}):
 \begin{itemize}
-  \item The equalized-odds gap drops from 0.157 to \textbf{0.037} (TPR 0.830 vs 0.852; FPR 0.175 vs 0.212) and
-  the DP gap from 0.247 to 0.156 (ratio 0.28\,$\rightarrow$\,0.62).
-  \item The cost: F1 drops from 0.735 to 0.686 and accuracy from 0.868 to 0.814; balanced accuracy only from
-  0.832 to 0.826. To equalise error rates, the optimiser \emph{raises} the women's TPR, which needs a much lower
-  threshold for them, so their FPR rises from 0.025 to 0.175.
-  \item \textbf{Precision parity gets worse} (gap 0.068\,$\rightarrow$\,0.254: precision for women falls to
-  0.38). This is the impossibility result in practice: with different base rates, equalized odds and
-  predictive parity cannot hold together. Choosing equalized odds is a value judgement that has to be made
+  \item The equalized-odds gap drops from 0.163 to \textbf{0.037} (TPR 0.836 vs 0.850; FPR 0.177 vs 0.214) and
+  the DP gap from 0.267 to 0.154 (ratio 0.27\,$\rightarrow$\,0.62).
+  \item The cost: F1 drops from 0.730 to 0.683 and accuracy from 0.861 to 0.812; balanced accuracy falls from
+  0.835 to 0.824. The women's TPR rises under the fitted post-processing policy, while their FPR
+  also rises from 0.030 to 0.177.
+  \item \textbf{Precision parity gets worse} (gap 0.069\,$\rightarrow$\,0.253: precision for women falls to
+  0.38). Equalized odds and predictive parity generally conflict for imperfect classifiers with different
+  base rates. Choosing equalized odds is a value judgement that has to be made
   explicitly with the business owner.
 \end{itemize}
 
@@ -411,27 +427,32 @@ equalized-odds post-processing (test set).}
 \end{figure}
 
 \paragraph{Limits.} \code{ThresholdOptimizer} needs \code{sex} at prediction time and applies different
-thresholds by group. That is disparate treatment, which may be forbidden in some uses (e.g.\ credit in the
-EU or US). In-processing (e.g.\ \code{ExponentiatedGradient}) or pre-processing (reweighing) avoids this at
-higher training cost. Its predictions are also randomised near the thresholds, which has to be explained to
-users. Finally, a fair classifier on biased historical labels remains a model of a biased world: the audit
+thresholds by group. Whether such a policy is acceptable depends on the application. Its randomisation
+can mix threshold rules and sometimes ignore the score; it is not limited to borderline cases. The seed is
+fixed for this reported comparison. The API serves the baseline policy, not this mitigation. Finally,
+a classifier trained on biased historical labels can preserve those limitations: the audit
 should be repeated on recent data.
 
 \section{Serving, tests and reproducibility}
 The final pipeline is served by a FastAPI app (\code{src/adult\_poc/api.py}): \code{GET /health} and
 \code{POST /predict}, which takes a list of records with the original column names, validates them with
-Pydantic (types, ranges, \code{sex} $\in$ \{Male, Female\}, optional missing fields) and returns the raw score,
-the isotonic-calibrated probability and the decision at the validation threshold. \code{pytest} covers the
-feature transformer, the ECE implementation and the endpoint. Seeds, split sizes and tuning budgets are in
-\code{config.yaml}; each step is one script (\code{make all}). The data loader calls \code{fetch\_openml} and
-falls back to an identical local copy of the UCI file when OpenML is unreachable (which was the case in our
-cloud environment).
+Pydantic (types, ranges, finite numbers, \code{sex} $\in$ \{Male, Female\}, optional missing fields).
+Empty batches and unknown fields return HTTP 422. The response contains the raw score, optional
+isotonic-calibrated probability and the baseline decision at the raw-score validation threshold. It does
+not serve the fairness post-processor. Missing model files produce HTTP 503 with a training instruction.
+Tests exercise a small fitted pipeline, so endpoint tests run even before the full model is trained.
+
+Seeds, split sizes and tuning budgets are in \code{config.yaml}; tested dependencies are pinned in
+\code{requirements.txt}. \code{make reproduce} rebuilds from saved configurations; \code{make all} also
+reruns tuning. The data loader calls \code{fetch\_openml} and reorders Adult v2 to match the offline UCI copy:
+\code{adult.data} followed by \code{adult.test}. A normalized dataset hash rejects a different row order.
+\code{scripts/download\_data.py} prepares the optional offline copy from the official archive.
 
 \section{Conclusion and critical discussion}
 \label{sec:conclusion}
-LightGBM inside a single preprocessing Pipeline reaches PR-AUC 0.840 and F1 0.735 on unseen data, a clear
-gain over the linear baseline (0.777 / 0.692) and over Random Forest (0.815 / 0.714), with honest
-CV-based tuning confirmed by validation and test scores that agree with each other. Main limitations and what
+LightGBM inside a single preprocessing Pipeline reaches PR-AUC 0.840 and F1 0.730 on held-out data, a clear
+gain over the linear baseline (0.777 / 0.692) and over Random Forest (0.815 / 0.715).
+Training-only CV and held-out evaluation support this comparison, subject to the limitations above. Main limitations and what
 we would change:
 \begin{itemize}
   \item \textbf{Imbalance remedy vs calibration.} The ablation shows that threshold moving alone matches class
@@ -444,21 +465,23 @@ we would change:
   inference.
   \item \textbf{Data validity.} The census data is from 1994 and \$50K is not inflation-adjusted. The model is a
   proof of concept, not a decision tool for today's population.
-  \item \textbf{Statistical uncertainty.} Differences below about 0.01 PR-AUC (2 CV standard deviations) should
-  not be over-interpreted; bootstrap confidence intervals on test would be the next step.
+  \item \textbf{Statistical uncertainty.} Small metric differences should not be over-interpreted. CV fold
+  standard deviations are not a test of significance; paired bootstrap intervals would be a possible next step.
 \end{itemize}
 
 \section*{Use of AI coding assistants}
 We used Claude (Anthropic), an AI assistant, to help write and structure the Python code (pipeline,
-tuning, SHAP, calibration, fairness and API scripts) and to draft parts of this report. All
-methodological choices, results and interpretations were reviewed, re-run and discussed by the group, and
-every member can explain each part.
+tuning, SHAP, calibration, fairness and API scripts) and to draft parts of this report. Codex (OpenAI) later
+assisted with repository review, reproducibility corrections, regression tests and report updates.
+The group remains responsible for checking the results and being able to explain the work.
 
 \section*{Contribution statement}
+Sofyan produced the initial implementation across the project. The table identifies section responsibilities
+for review and explanation; it should not be read as independent authorship of each section's initial code.
 \begin{center}\small
 \begin{tabular}{ll}
 \toprule
-Member & Main contributions \\
+Member & Section responsibility \\
 \midrule
 Sofyan Hadj-Ali & EDA and split design; feature engineering; repository and README \\
 Martin Vallée & Imbalance analysis; model zoo; Optuna tuning and run log \\

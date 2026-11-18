@@ -2,7 +2,8 @@
 
 Only the training split is seen during tuning: each trial is scored by the mean
 of 5 out-of-fold scores, so the validation and test splits never influence the
-choice of hyper-parameters and the reported CV score is not optimistic.
+choice of hyper-parameters. The winning CV score still has selection optimism;
+validation and test provide separate checks.
 Every trial is appended to ``artifacts/runs/trials.csv`` (the run log).
 """
 from __future__ import annotations
@@ -58,6 +59,7 @@ def tune_model(name: str, X, y, cfg: dict) -> optuna.Study:
     def objective(trial: optuna.Trial) -> float:
         params = suggest_params(name, trial)
         pipe = make_pipeline(build_model(name, params, seed), fe_kwargs, scale=uses_scaling(name))
+        trial.set_user_attr("effective_model_params", pipe[-1].get_params())
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             res = cross_validate(pipe, X, y, cv=cv, scoring=CV_SCORING, n_jobs=1)
