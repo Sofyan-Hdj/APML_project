@@ -79,3 +79,14 @@ Stratified 60 / 20 / 20 (seed 42), after removing 52 exact duplicate rows:
 * **train** (29,274) — Optuna tuning with 5-fold CV, then final refit;
 * **validation** (9,758) — model selection, decision threshold, isotonic calibration, fairness post-processing;
 * **test** (9,758) — used once, for the final reported numbers.
+
+## Results (test set, used once)
+
+| Model | PR-AUC | F1 | Precision | Recall |
+|---|---|---|---|---|
+| Logistic regression | 0.777 | 0.692 | 0.660 | 0.728 |
+| Random forest | 0.815 | 0.714 | 0.643 | 0.803 |
+| **LightGBM (final)** | **0.840** | **0.735** | 0.709 | 0.763 |
+
+Calibration (isotonic): ECE 0.106 → 0.006. Fairness (sex, ThresholdOptimizer): equalized-odds gap 0.157 → 0.037.
+Full analysis in `report/report.pdf`.
