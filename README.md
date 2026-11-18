@@ -9,9 +9,8 @@ binary target `income > 50K` (24% positives), sensitive attribute `sex`.
 End-to-end pipeline: EDA → feature engineering → class-imbalance handling → three models
 (Logistic Regression, Random Forest, LightGBM) tuned with Optuna under 5-fold CV → SHAP
 explanations → calibration diagnostics → fairness audit and mitigation → FastAPI endpoint.
-Methodological choices and corrected results are in `report/report.tex`; its
-preview compiles in the LaTeX editor. The tracked `report/report.pdf` is the
-previous export and must be refreshed from the editor before the PR/submission.
+Methodological choices and corrected results are in `report/report.pdf`, with
+the editable LaTeX source in `report/report.tex`.
 
 ## Setup
 

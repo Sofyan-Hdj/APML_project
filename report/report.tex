@@ -15,6 +15,7 @@
 \usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black,citecolor=blue!50!black]{hyperref}
 \setlist{itemsep=1pt,topsep=3pt}
 \captionsetup{font=small,labelfont=bf}
+\setlength{\emergencystretch}{3em}
 \graphicspath{{../artifacts/plots/}}
 \newcommand{\code}[1]{\texttt{\small #1}}
 \makeatletter\newcommand{\inputtable}[1]{\@@input #1 }\makeatother
@@ -73,6 +74,7 @@ leaving 48{,}790 rows. Key observations (Fig.~\ref{fig:eda}):
 \label{fig:eda}
 \end{figure}
 
+\clearpage
 \paragraph{Honest train / validation / test split.} We use a stratified 60/20/20 split (seed 42):
 \textbf{train} (29{,}274 rows) is the only data seen by hyper-parameter tuning, through 5-fold stratified
 cross-validation; \textbf{validation} (9{,}758) is used for every post-training decision (model
@@ -331,7 +333,7 @@ positives $\approx3.2\times$ relative to negatives shifts the learned log-odds b
 Weighting can also change ranking when a model is retrained; the ablation found only small PR-AUC changes.
 
 \paragraph{Correction.} We fit an isotonic mapping on the \emph{validation} scores, keeping the trained
-pipeline frozen (\code{CalibratedClassifierCV(FrozenEstimator(pipe), method="isotonic")}), and evaluate on
+pipeline frozen. We wrap it in \code{FrozenEstimator} and use \code{CalibratedClassifierCV} with isotonic calibration, then evaluate on
 test: Brier drops to \textbf{0.086}, ECE to
 \textbf{0.007}, and the mean predicted probability becomes 0.240. The script explicitly checks decisions:
 none change on this test set (same F1 0.730 at the re-tuned calibrated threshold 0.368).
@@ -505,7 +507,7 @@ the training split; class weights balanced for every trial. Artifacts: ``hist'' 
 \code{artifacts/models/<model>.joblib}. $\star$ marks the selected trial.
 
 {\scriptsize
-\setlength{\tabcolsep}{3pt}
+\setlength{\tabcolsep}{2.8pt}
 \begin{longtable}{llp{5.6cm}ccccccl}
 \toprule
 Model & Trial & Parameters & PR-AUC & sd & ROC-AUC & F1@0.5 & Brier & s & Artifacts \\

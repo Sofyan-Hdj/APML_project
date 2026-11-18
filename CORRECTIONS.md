@@ -55,8 +55,7 @@ method selection.
 - Actual cached OpenML and downloaded UCI inputs: identical dataset and split hashes.
 - One-trial tuning/logging smoke check for each model: passed in a temporary output folder.
 - LaTeX source: compiled successfully with the desktop editor using the repository as project root.
+- Report PDF: rebuilt from the corrected source; all 13 pages rendered and visually checked.
 
-The full historical 100-trial search was not rerun. The tracked `report/report.pdf`
-is still the previous export; export the corrected editor preview before the
-later PR/submission. The built-in compiler verifies the preview but does not
-export a replacement PDF.
+The full historical 100-trial search was not rerun. The tracked report PDF and
+LaTeX source now both contain the corrected results.
