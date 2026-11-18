@@ -24,17 +24,52 @@ def best_f1_threshold(y_true, proba) -> float:
     return float(t[np.argmax(f1[:-1])])
 
 
-def expected_calibration_error(y_true, proba, n_bins: int = 10) -> float:
-    """Equal-width ECE: weighted mean |accuracy - confidence| over probability bins."""
+def expected_calibration_error(
+    y_true, proba, n_bins: int = 10, strategy: str = "uniform"
+) -> float:
+    """Weighted mean |accuracy - confidence| over probability bins.
+
+    Parameters
+    ----------
+    strategy : {"uniform", "quantile"}
+        ``uniform`` - equal-width bins (standard ECE).
+        ``quantile`` - equal-count bins; more robust when predicted
+        probabilities cluster in a narrow range (e.g. after
+        class_weight adjustment).
+    """
     y_true, proba = np.asarray(y_true), np.asarray(proba)
-    bins = np.linspace(0, 1, n_bins + 1)
-    idx = np.clip(np.digitize(proba, bins[1:-1]), 0, n_bins - 1)
+    if strategy == "uniform":
+        bins = np.linspace(0, 1, n_bins + 1)
+        idx = np.clip(np.digitize(proba, bins[1:-1]), 0, n_bins - 1)
+    elif strategy == "quantile":
+        quantiles = np.linspace(0, 100, n_bins + 1)
+        edges = np.unique(np.percentile(proba, quantiles))
+        idx = np.clip(np.digitize(proba, edges[1:-1]), 0, len(edges) - 2)
+    else:
+        raise ValueError(f"strategy must be 'uniform' or 'quantile', got '{strategy}'")
     ece = 0.0
-    for b in range(n_bins):
+    for b in range(idx.max() + 1):
         m = idx == b
         if m.any():
             ece += m.mean() * abs(y_true[m].mean() - proba[m].mean())
     return float(ece)
+
+
+def max_calibration_error(y_true, proba, n_bins: int = 10) -> float:
+    """Maximum Calibration Error - worst single-bin deviation.
+
+    Useful for safety-critical applications where no probability
+    range should be badly mis-calibrated.
+    """
+    y_true, proba = np.asarray(y_true), np.asarray(proba)
+    bins = np.linspace(0, 1, n_bins + 1)
+    idx = np.clip(np.digitize(proba, bins[1:-1]), 0, n_bins - 1)
+    mce = 0.0
+    for b in range(n_bins):
+        m = idx == b
+        if m.any():
+            mce = max(mce, abs(y_true[m].mean() - proba[m].mean()))
+    return float(mce)
 
 
 def evaluate(y_true, proba, threshold: float = 0.5) -> dict:
@@ -49,5 +84,7 @@ def evaluate(y_true, proba, threshold: float = 0.5) -> dict:
         "accuracy": accuracy_score(y_true, pred),
         "brier": brier_score_loss(y_true, proba),
         "ece": expected_calibration_error(y_true, proba),
+        "ece_quantile": expected_calibration_error(y_true, proba, strategy="quantile"),
+        "mce": max_calibration_error(y_true, proba),
         "threshold": threshold,
     }
