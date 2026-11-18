@@ -38,9 +38,12 @@ RUN_LOG_FIELDS = [
 
 
 def _git_commit() -> str:
+    # Run git inside this project, not in the caller's working directory, so the run log
+    # records this repository's commit even if the script is launched from elsewhere.
+    repo = Path(__file__).resolve().parents[2]
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True,
-                                       stderr=subprocess.DEVNULL).strip()
+                                       cwd=repo, stderr=subprocess.DEVNULL).strip()
     except Exception:
         return "n/a"
 
