@@ -55,6 +55,24 @@ if __name__ == "__main__":
     if sv.values.ndim == 3:  # RF returns one slice per class
         sv = sv[:, :, 1]
 
+    # ── Sanity check: SHAP additivity ──────────────────────────────
+    # By the efficiency axiom, sum of SHAP values + base value must equal the
+    # model's output in the explainer's space (log-odds for logreg/LightGBM,
+    # probability for RF). We verify on the first 5 samples to catch silent bugs.
+    if meta["model"] == "logreg":
+        model_out = model.decision_function(Z.values)
+    elif meta["model"] == "rf":
+        model_out = model.predict_proba(Z.values)[:, 1]
+    else:  # LightGBM (sklearn API): raw log-odds
+        model_out = model.predict(Z.values, raw_score=True)
+    for i in range(min(5, len(sv.values))):
+        shap_sum = sv.values[i].sum() + np.ravel(sv.base_values[i] if np.ndim(sv.base_values) else sv.base_values)[0]
+        assert abs(shap_sum - model_out[i]) < 1e-4, (
+            f"SHAP additivity violated for sample {i}: "
+            f"sum(SHAP)+base={shap_sum:.6f} vs model={model_out[i]:.6f}"
+        )
+    logging.info("SHAP additivity check passed (sum SHAP + base ~= model output)")
+
     # Global: mean |SHAP| per encoded column and aggregated to the original feature
     imp = pd.Series(np.abs(sv.values).mean(0), index=names).sort_values(ascending=False)
     agg = imp.groupby([parent_feature(c) for c in imp.index]).sum().sort_values(ascending=False)
